@@ -1,0 +1,19 @@
+---
+custom:
+  - printsetupapi:
+      start: '5:45'
+      duration:
+        hours: 12
+        minutes: 15
+      target_minReplicas: 2
+      default_minReplicas: 1
+hourly:
+  - taxfilingapi:
+      start: '5:45'
+      scale_duration:
+        minutes: 15      
+      duration:
+        hours: 12
+        minutes: 30
+      target_minReplicas: 2
+      default_minReplicas: 1

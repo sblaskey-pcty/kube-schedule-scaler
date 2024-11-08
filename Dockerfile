@@ -1,30 +1,34 @@
-From ubuntu:16.04
-MAINTAINER "eng.ahmed.elbakry@gmail.com"
+FROM docker.paylocity.com/amazonlinux:2
 
-# Install python tools and dev packages
-RUN apt-get update \
-    && apt-get install -q -y --no-install-recommends  python3-pip python3-setuptools python3-wheel gcc \
-    && apt-get clean \ 
-    && rm -rf /var/lib/apt/lists/*
+# Install necessary packages
+RUN yum update -y && \
+    yum install -y tar gzip curl git unzip python3 python3-pip python3-setuptools python3-wheel cron
 
-# set python 3 as the default python version
+# Set Python 3 as the default python
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1 \
-    && update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+    && update-alternatives --set python /usr/bin/python3
+RUN update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
 RUN pip3 install --upgrade pip requests setuptools pipenv
 RUN pip3 install pykube
 RUN pip3 install python-crontab
 RUN pip3 install croniter
-RUN pip3 install boto3
-RUN apt-get update &&  apt-get install -y apt-transport-https curl gnupg sudo \
-    && curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-RUN sudo touch /etc/apt/sources.list.d/kubernetes.list \
-    && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
-RUN sudo apt-get update \
-    && sudo apt-get install -y kubectl cron
 
-ADD schedule_scaling /root/schedule_scaling
-COPY ./run_missed_jobs.py /root
-RUN chmod a+x /root/run_missed_jobs.py
-COPY ./startup.sh /root
-RUN chmod a+x /root/startup.sh
-CMD /root/startup.sh
+# Install kubectl
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    chmod +x kubectl && \
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+# Adding file
+ADD schedule /app/schedule
+ADD test.py /app/test.py
+RUN chmod a+x /app/test.py
+ADD scheduler_classes.py /app/scheduler_classes.py
+ENV ENVIRONMENT='prf'
+
+# Verify installations
+RUN kubectl version --client && \
+    python --version && \
+    pip3 --version
+
+# Set the entrypoint
+ENTRYPOINT ["/bin/bash"]

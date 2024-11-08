@@ -148,54 +148,6 @@ def stacks_to_scale():
 
     return stacks_scaling_dict
 
-
-def stack_job_creator():
-    """ Create CronJobs for configured Stacks """
-
-    stacks__to_scale = stacks_to_scale()
-    print("Stacks collected for scaling: ")
-    for stacks, schedules in stacks__to_scale.items():
-        stack = stacks.split("/")[1]
-        namespace = stacks.split("/")[0]
-        for n in range(len(schedules)):
-            schedules_n = schedules[n]
-            replicas = schedules_n.get('replicas', None)
-            minReplicas = schedules_n.get('minReplicas', None)
-            maxReplicas = schedules_n.get('maxReplicas', None)
-            schedule = schedules_n.get('schedule', None)
-
-            print("Stack: %s, Namespace: %s, Replicas: %s, MinReplicas: %s, MaxReplicas: %s, minSchedule: %s" %
-                  (stack, namespace, replicas, minReplicas, maxReplicas, schedule))
-
-            with open("/root/schedule_scaling/templates/stack-script.py", 'r') as script:
-                script = script.read()
-            stack_script = script % {
-                'namespace': namespace,
-                'name': stack,
-                'replicas': replicas,
-                'minReplicas': minReplicas,
-                'maxReplicas': maxReplicas,
-                'time': EXECUTION_TIME,
-            }
-            i = 0
-            while os.path.exists("/tmp/scaling_jobs/%s-%d.py" % (stack, i)):
-                i += 1
-            script_creator = open("/tmp/scaling_jobs/%s-%d.py" % (stack, i), "w")
-            script_creator.write(stack_script)
-            script_creator.close()
-            cmd = ['sleep 50 ; . /root/.profile ; /usr/bin/python', script_creator.name,
-                   '2>&1 | tee -a /tmp/scale_activities.log']
-            cmd = ' '.join(map(str, cmd))
-            scaling_cron = CronTab(user='root')
-            job = scaling_cron.new(command=cmd)
-            try:
-                job.setall(schedule)
-                job.set_comment("Scheduling_Jobs")
-                scaling_cron.write()
-            except Exception:
-                print('Stack: %s has syntax error in the schedule' % (stack))
-                pass
-
 def parse_content(content, identifier):
     if content == None:
         return []
@@ -271,4 +223,3 @@ if __name__ == '__main__':
     create_job_directory()
     clear_cron()
     deploy_job_creator()
-    stack_job_creator()
