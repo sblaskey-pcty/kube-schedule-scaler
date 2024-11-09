@@ -69,8 +69,9 @@ def update_min_replicas(schedule, env, type: ScheduleType):
             else:
                 print(f'Updating min replicas to {min_replicas_false} for {name} in {env}')
 
-def evalutate_schedule(schedule, type: ScheduleType, frequency: ScheduleFrequency):
-    for app in schedule:
+def evalutate_schedule(schedule, type: ScheduleType, frequency: ScheduleFrequency, target_app: str):
+    if target_app in schedule:
+        app = target_app
         now_ct = datetime.now(central)
         duration = timedelta(hours=schedule[app].duration.hours, minutes=schedule[app].duration.minutes)
         start_time_ct = central.localize(datetime.combine(datetime.today(), schedule[app].start))

@@ -1,0 +1,35 @@
+---
+custom: 
+  - ccoetesteksapi:
+      start: '5:45'
+      duration:
+        hours: 11
+        minutes: 15
+      target_minReplicas: 2
+      default_minReplicas: 1
+  - mobileapi:
+      start: '5:45'
+      duration:
+        hours: 11
+        minutes: 30
+      target_minReplicas: 2
+      default_minReplicas: 1    
+hourly:
+  - corehrapi:
+      start: '5:00'
+      scale_duration:
+        minutes: 15
+      duration:
+        hours: 12
+        minutes: 0
+      target_minReplicas: 2
+      default_minReplicas: 1
+  - timeapi:
+      start: '5:00'
+      scale_duration:
+        minutes: 15      
+      duration:
+        hours: 12
+        minutes: 0
+      target_minReplicas: 2
+      default_minReplicas: 1    

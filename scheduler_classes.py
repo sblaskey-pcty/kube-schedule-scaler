@@ -24,8 +24,12 @@ class Schedule:
     default_minReplicas: int
     scale_duration: Optional[Duration] = None
 
-
 @dataclass
 class ScheduleConfig:
     custom: Dict[str, Schedule] = field(default_factory=dict)
     hourly: Dict[str, Schedule] = field(default_factory=dict)
+
+@dataclass
+class updateMinReplicasRequest:
+    update_required: bool
+    target_minReplicas: int
