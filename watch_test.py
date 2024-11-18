@@ -60,7 +60,7 @@ def update_min_replicas(namespace: str, hpa_name: str, current_min_replicas: int
     except client.exceptions.ApiException as e:
         print(f"Scheduled Scaler exception when updating HPA '{hpa_name}' in namespace '{namespace}': {e}")
 
-def evalutate_schedule(schedule, type: ScheduleType, frequency: ScheduleFrequency, target_app: str, current_replicas: int) -> updateMinReplicasRequest:
+def evaluate_schedule(schedule, type: ScheduleType, frequency: ScheduleFrequency, target_app: str, current_replicas: int) -> updateMinReplicasRequest:
     if target_app in schedule:
         app = target_app
         now_ct = datetime.now(central)
@@ -125,8 +125,9 @@ def main():
             if hpa_environment == environment:
                 app_name = (hpa.metadata.name).split('-')[1]
                 current_replicas = hpa.spec.min_replicas
-                everydayCustom = evalutate_schedule(everydaySchedule.custom, ScheduleType.Everday, ScheduleFrequency.Custom, app_name, current_replicas)
-                everdayHourly = evalutate_schedule(everydaySchedule.hourly, ScheduleType.Everday, ScheduleFrequency.Hourly, app_name, current_replicas)
+                print(f"{app_name} - {current_replicas}")
+                everydayCustom = evaluate_schedule(everydaySchedule.custom, ScheduleType.Everday, ScheduleFrequency.Custom, app_name, current_replicas)
+                everdayHourly = evaluate_schedule(everydaySchedule.hourly, ScheduleType.Everday, ScheduleFrequency.Hourly, app_name, current_replicas)
                 if everydayCustom.update_required or everdayHourly.update_required:
                     update_min_replicas(hpa.metadata.namespace, hpa.metadata.name, hpa.spec.min_replicas, everydayCustom.target_minReplicas, v2)
             
