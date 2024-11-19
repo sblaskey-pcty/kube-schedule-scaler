@@ -1,0 +1,18 @@
+apiVersion: scaler.io/v1alpha1
+kind: Schedule
+metadata:
+  name: dev-workload-schedule-two
+  labels:
+    env: stg
+  namespace: kube-system
+spec:
+  custom:
+    - name: sampleeksapi
+      start: '5:45'
+      total-duration:
+        hours: 11
+        minutes: 15
+      target-minReplicas: 2
+      default-minReplicas: 1
+      days:
+       - everyday

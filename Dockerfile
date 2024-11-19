@@ -31,6 +31,8 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
 ADD schedule /app/schedule
 ADD watch_test.py /app/watch_test.py
 RUN chmod a+x /app/watch_test.py
+ADD crd_test.py /app/crd_test.py
+RUN chmod a+x /app/crd_test.py
 ADD scheduler_classes.py /app/scheduler_classes.py
 ENV ENVIRONMENT='dev'
 
