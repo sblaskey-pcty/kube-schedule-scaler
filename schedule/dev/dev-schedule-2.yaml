@@ -6,13 +6,25 @@ metadata:
     env: stg
   namespace: kube-system
 spec:
-  custom:
-    - name: sampleeksapi
-      start: '5:45'
-      total-duration:
-        hours: 11
-        minutes: 15
-      target-minReplicas: 2
-      default-minReplicas: 1
-      days:
-       - everyday
+  - name: sampleeksapi
+    default-minReplicas: 1
+    schedules:
+      - start: '5:45'
+        scale-type: custom
+        total-duration:
+          hours: 11
+          minutes: 15
+        target-minReplicas: 2
+        days:
+          - everyday
+  - name: ccoetesteksapi
+    default-minReplicas: 1  
+    schedules:
+      - start: '5:45'
+        scale-type: custom
+        total-duration:
+          hours: 11
+          minutes: 15
+        target-minReplicas: 2
+        days:
+          - everyday      

@@ -3,6 +3,11 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from datetime import time
 
+Scale_Type = [
+    'custom',
+    'hourly'
+]
+
 Days = [
     'everyday',
     'weekday'
@@ -17,8 +22,16 @@ Days = [
 ]
 
 class ScheduleType(Enum):
-    Everday = "everyday"
+    Everday = 'everyday'
     Weekday = 'weekday'
+    Weekend = 'weekend'
+    Monday = 'monday'
+    Tuesday = 'tuesday'
+    Wednesday = 'wednesday'
+    Thursday = 'thursday'
+    Friday = 'friday'
+    Saturday = 'saturday'
+    Sunday = 'sunday'
 
 
 class ScheduleFrequency(Enum):
@@ -27,44 +40,49 @@ class ScheduleFrequency(Enum):
 
 @dataclass
 class Duration:
-    hours: Optional[int] = None
-    minutes: Optional[int] = None
+    hours: Optional[int] = 0
+    minutes: Optional[int] = 0
 
 @dataclass
 class Schedule:
-    name: str
     start: time
+    scale_type: str
     total_duration: Duration
     target_minReplicas: int
-    default_minReplicas: int
     scale_duration: Optional[Duration] = None
     days: List[str] = field(default_factory=list)
 
     def __post__init__(self):
         self.validate_days()
+        self.validate_scale_type()
 
     def validate_days(self):
         for day in self.days:
             if day.lower() not in Days:
                 raise ValueError(f"Invalidate day: {day}")
+            
+    def validate_scale_type(self):
+        if self.scale_type.lower() not in Scale_Type:
+            raise ValueError(f"Invalidate scale type: {self.scale_type}")        
+
+@dataclass
+class AppSchedule:
+    name: str
+    default_minReplicas: int
+    schedules: List[Schedule] = field(default_factory=list)
 
 @dataclass
 class ScheduleConfig:
-    custom: Dict[str, Schedule] = field(default_factory=dict)
-    hourly: Dict[str, Schedule] = field(default_factory=dict)
+    apps: Dict[str, AppSchedule] = field(default_factory=dict)
 
     def merge(self, other: 'ScheduleConfig') -> 'ScheduleConfig':
-        merged_custom = {**self.custom, **other.custom}
-        merged_hourly = {**self.hourly, **other.hourly}
-        return ScheduleConfig(custom=merged_custom, hourly=merged_hourly)
+        merged_apps = {**self.apps, **other.apps}
+        return ScheduleConfig(apps=merged_apps)
     
     def remove(self, other: 'ScheduleConfig') -> 'ScheduleConfig':
-        for key in other.custom:
-            if key in self.custom:
-                del self.custom[key]
-        for key in other.hourly:
-            if key in self.hourly:
-                del self.hourly[key]
+        for key in other.apps:
+            if key in self.apps:
+                del self.apps[key]
         return self
 
 @dataclass

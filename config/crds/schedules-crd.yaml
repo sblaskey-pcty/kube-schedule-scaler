@@ -13,83 +13,55 @@ spec:
           type: object
           properties:
             spec:
-              type: object
-              properties:
-                custom:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      name:
-                        type: string
-                      start:
-                        type: string
-                      total-duration:
-                        type: object
-                        properties:
-                          hours:
-                            type: integer
-                          minutes:
-                            type: integer
-                      target-minReplicas:
-                        type: integer
-                      default-minReplicas:
-                        type: integer
-                      days:
-                        type: array
-                        items:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  default-minReplicas:
+                    type: integer                      
+                  schedules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        start:
+                          type: string
+                        scale-type:
                           type: string
                           enum:
-                          - "monday"
-                          - "tuesday"
-                          - "wednesday"
-                          - "thursday"
-                          - "friday"
-                          - "saturday"
-                          - "sunday"
-                          - "weekday"
-                          - "weekend"
-                          - "everyday"
-                hourly:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      name:
-                        type: string
-                      start:
-                        type: string
-                      scale-duration:
-                        type: object
-                        properties:
-                          minutes:
-                            type: integer
-                      total-duration:
-                        type: object
-                        properties:
-                          hours:
-                            type: integer
-                          minutes:
-                            type: integer
-                      target-minReplicas:
-                        type: integer
-                      default-minReplicas:
-                        type: integer
-                      days:
-                        type: array
-                        items:
-                          type: string
-                          enum:
-                          - "monday"
-                          - "tuesday"
-                          - "wednesday"
-                          - "thursday"
-                          - "friday"
-                          - "saturday"
-                          - "sunday"
-                          - "weekday"
-                          - "weekend"
-                          - "everyday"
+                            - "custom"
+                            - "hourly"                          
+                        total-duration:
+                          type: object
+                          properties:
+                            hours:
+                              type: integer
+                            minutes:
+                              type: integer
+                        scale-duration:
+                          type: object
+                          properties:
+                            minutes:
+                              type: integer                          
+                        target-minReplicas:
+                          type: integer
+                        days:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                            - "monday"
+                            - "tuesday"
+                            - "wednesday"
+                            - "thursday"
+                            - "friday"
+                            - "saturday"
+                            - "sunday"
+                            - "weekday"
+                            - "weekend"
+                            - "everyday"
   scope: Namespaced
   names:
     plural: schedules

@@ -1,18 +1,8 @@
 from kubernetes import client, config, watch
-import yaml
-import os
 from datetime import datetime, timedelta, time
 import pytz
-from scheduler_classes import ScheduleType, ScheduleFrequency, Schedule, ScheduleConfig, Duration, updateMinReplicasRequest
+from scheduler_classes import ScheduleType, ScheduleFrequency, AppSchedule, Schedule, ScheduleConfig, Duration, updateMinReplicasRequest
 import threading
-
-# Checking environment var
-environment = os.getenv('ENVIRONMENT')
-
-if environment is None:
-    raise EnvironmentError('ENVIRONMENT variable is not set.')
-else:
-    print(f'The value for ENVIRONMENT variable is: {environment}')
 
 # Define the timezone for Central Time
 central = pytz.timezone('US/Central')
@@ -35,32 +25,32 @@ def parse_time(time_str: str) -> time:
 def get_app_names(schedule):
     app_names = []
     env_name = schedule.get('metadata', {}).get('labels', {}).get('env', {})
-    for item in schedule.get('spec', {}).get('custom', []):
-        app_names.append(f"{env_name}-{item.get('name')}")
-    for item in schedule.get('spec', {}).get('hourly', []):
+    for item in schedule.get('spec', []):
         app_names.append(f"{env_name}-{item.get('name')}")
     return app_names
 
 def get_schedule(schedule) -> ScheduleConfig:
-    custom = {item.get('name'): Schedule(
-        name = item.get('name'),
-        start = parse_time(item.get('start')),
-        total_duration = Duration(item.get('total-duration')),
-        target_minReplicas = item.get('target-minReplicas'),
-        default_minReplicas = item.get('default-minReplicas'),
-        days = item.get('days')
-    ) for item in schedule.get('spec', {}).get('custom', [])}
+    env_name = schedule.get('metadata', {}).get('labels', {}).get('env', {})
 
-    hourly = {item.get('name'): Schedule(
+    schedule_data = {f"{env_name}-{item.get('name')}": AppSchedule(
         name = item.get('name'),
-        start = parse_time(item.get('start')),
-        total_duration = Duration(item.get('total-duration')),
-        target_minReplicas = item.get('target-minReplicas'),
-        default_minReplicas = item.get('default-minReplicas'),
-        days = item.get('days')
-    ) for item in schedule.get('spec', {}).get('hourly', [])}
+        default_minReplicas = item.get('default-minReplicas'),        
+        schedules = [Schedule(
+            start = parse_time(schedule.get('start')),
+            scale_type = schedule.get('scale-type'),            
+            total_duration = Duration(
+                hours=schedule.get('total-duration').get('hours', 0),
+                minutes=schedule.get('total-duration').get('minutes', 0)
+                ),
+            scale_duration = Duration(
+                minutes=schedule.get('scale-duration', {}).get('minutes', 0)
+            ),
+            target_minReplicas = schedule.get('target-minReplicas'),
+            days = schedule.get('days')
+        ) for schedule in item.get('schedules', [])]
+    ) for item in schedule.get('spec', [])}
 
-    return ScheduleConfig(custom=custom, hourly=hourly)
+    return ScheduleConfig(apps=schedule_data)
 
 def watch_hpa(stop_event, app_names, schedule_data):
     hpa_watch = watch.Watch()
@@ -70,16 +60,20 @@ def watch_hpa(stop_event, app_names, schedule_data):
         hpa = hpa_event['object']
         hpa_name = f"{(hpa.metadata.name).split('-')[0]}-{(hpa.metadata.name).split('-')[1]}"
         if hpa_name in app_names:
-           # print(f"HPA Event: {hpa_event['type']} - HPA: {hpa_name} - Current Replicas: {hpa.status.current_replicas}") 
-           app = (hpa.metadata.name).split('-')[1]
-           print(schedule_data.custom)
-           current_replicas = hpa.status.current_replicas
-           target_replicas = schedule_data.custom[app].target_minReplicas
-           print(f'App: {app}, Current Replicas: {current_replicas}, Target Replias: {target_replicas}')
-           
+            default_minReplicas = schedule_data.apps[hpa_name].default_minReplicas
+            for schedule in schedule_data.apps[hpa_name].schedules:
+                current_minReplicas = hpa.spec.min_replicas
+                current_replicas = hpa.status.current_replicas
+                target_replicas = schedule.target_minReplicas
+                print(f'Event-type: {hpa_event["type"]}, App: {hpa_name}, Running Replicas: {current_replicas}, Current minReplicas: {current_minReplicas}, Target minReplicas: {target_replicas}')
+                evulation_results = evaluate_schedule(schedule, hpa_name, current_minReplicas, default_minReplicas)
+                print(f"Evulation Results: {evulation_results}")
+
+            
 
 def watch_schedules():
     app_names_set = set()
+    schedule_names_set = set()
     stop_event = threading.Event()
     hpa_thread = None
     w = watch.Watch()
@@ -87,15 +81,29 @@ def watch_schedules():
     for event in w.stream(custom_api.list_namespaced_custom_object, group, version, "kube-system", plural):
         schedule = event['object']
         event_type = event['type']
+        schedule_name = event['object']['metadata']['name']
         app_names = get_app_names(schedule)
-        inital_schedule = get_schedule(schedule)
-
-        if event_type in ["ADDED", "MODIFIED"]:
+        initial_schedule = get_schedule(schedule)
+        print(schedule_name)
+        print(schedule_names_set)
+        if event_type in ["ADDED"]:
+            duplicate = False
+            for app in app_names:
+                if app in app_names_set:
+                    print(f"Schedule for {app} already exists. Skipping")
+                    duplicate = True
+            if duplicate == False:
+                schedule_names_set.add(schedule_name)
+                app_names_set.update(app_names)
+                schedule_data = schedule_data.merge(initial_schedule)
+        elif event_type in ["MODIFIED"]:
             app_names_set.update(app_names)
-            schedule_data = schedule_data.merge(inital_schedule)
+            schedule_data = schedule_data.merge(initial_schedule)
         elif event_type == "DELETED":
-            app_names_set.difference_update(app_names)
-            schedule_data = schedule_data.remove(inital_schedule)
+            if schedule_name in schedule_names_set:
+                app_names_set.difference_update(app_names)
+                schedule_names_set.remove(schedule_name)
+                schedule_data = schedule_data.remove(initial_schedule)
 
         print(f"Event: {event_type} - Schedule: {schedule['metadata']['name']}")
         print(f"App names: {app_names_set}")
@@ -124,53 +132,126 @@ def update_min_replicas(namespace: str, hpa_name: str, current_min_replicas: int
     except client.exceptions.ApiException as e:
         print(f"Scheduled Scaler exception when updating HPA '{hpa_name}' in namespace '{namespace}': {e}")
 
-def evaluate_schedule(schedule, type: ScheduleType, frequency: ScheduleFrequency, target_app: str, current_replicas: int) -> updateMinReplicasRequest:
-    if target_app in schedule:
-        app = target_app
-        now_ct = datetime.now(central)
-        duration = timedelta(hours=schedule[app].duration.hours, minutes=schedule[app].duration.minutes)
-        start_time_ct = central.localize(datetime.combine(datetime.today(), schedule[app].start))
-        end_time_ct = start_time_ct + duration
+def evaulate_days(day_type: str, now_ct: datetime) -> bool:
+    if day_type == 'everyday':
+        return True
+    
+    if day_type == 'weekday':
+        if now_ct.weekday() < 5:
+            return True
+        
+    if day_type == 'weekend':
+        if now_ct.weekday() >= 5:
+            return True
+        
+    if day_type == 'monday':
+        if now_ct.weekday() == 0:
+            return True
+        
+    if day_type == 'tuesday':
+        if now_ct.weekday() == 1:
+            return True
+        
+    if day_type == 'wednesday':
+        if now_ct.weekday() == 2:
+            return True
+    
+    if day_type == 'thursday':
+        if now_ct.weekday() == 3:
+            return True
+        
+    if day_type == 'friday':
+        if now_ct.weekday() == 4:
+            return True
+        
+    if day_type == 'saturday':
+        if now_ct.weekday() == 5:
+            return True
+        
+    if day_type == 'sunday':
+        if now_ct.weekday() == 6:
+            return True
 
-        if frequency == ScheduleFrequency.Custom:
-            if start_time_ct <= now_ct <= end_time_ct:
-                if current_replicas != schedule[app].target_minReplicas:
-                    if type == ScheduleType.Everday:
-                            print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].target_minReplicas}')
-                            return updateMinReplicasRequest(True, schedule[app].target_minReplicas)
 
-                    if type == ScheduleType.Weekday:
-                        if now_ct.weekday() < 5:
-                            print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].target_minReplicas}')
-                            return updateMinReplicasRequest(True, schedule[app].target_minReplicas)
+def evaluate_schedule(schedule: Schedule, target_app: str, current_minReplicas: int, default_minReplicas: int) -> updateMinReplicasRequest:
+    app = target_app
+    now_ct = datetime.now(central)
+    duration = timedelta(hours=schedule.total_duration.hours, minutes=schedule.total_duration.minutes)
+    start_time_ct = central.localize(datetime.combine(datetime.today(), schedule.start))
+    end_time_ct = start_time_ct + duration
+
+    if schedule.scale_type == 'custom':
+        if start_time_ct <= now_ct <= end_time_ct:
+            if current_minReplicas != schedule.target_minReplicas:
+                for day_type in schedule.days:
+                    result = evaulate_days(day_type, now_ct)
+                    if result:
+                        print(f'Sending Schedule Event for {app}: current_minReplicas: {current_minReplicas}, target_minReplicas: {schedule.target_minReplicas}')
+                        return updateMinReplicasRequest(True, schedule.target_minReplicas)
+                    else:
+                        return updateMinReplicasRequest(False, 1)
             else:
-                if current_replicas != schedule[app].default_minReplicas:
-                    print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].default_minReplicas}')
-                    return updateMinReplicasRequest(True, schedule[app].default_minReplicas)
+                return updateMinReplicasRequest(False, 1)                
         else:
-            return updateMinReplicasRequest(False, 1) 
-
-        if frequency == ScheduleFrequency.Hourly:
-            time_difference = (now_ct - start_time_ct).total_seconds() / 60
-            if start_time_ct <= now_ct <= end_time_ct and (time_difference % 60 == 0 or time_difference % 60 <= schedule[app].scale_duration.minutes):
-                if current_replicas != schedule[app].target_minReplicas:                
-                    if type == ScheduleType.Everday:
-                        print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].target_minReplicas}')
-                        return updateMinReplicasRequest(True, schedule[app].target_minReplicas)
-                    
-                    if type == ScheduleType.Weekday:
-                        if now_ct.weekday() < 5:
-                            print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].target_minReplicas}')
-                            return updateMinReplicasRequest(True, schedule[app].target_minReplicas)                            
+            if current_minReplicas != default_minReplicas:
+                print(f'Sending Schedule Event for {app}: current_minReplicas: {current_minReplicas}, target_minReplicas: {default_minReplicas}')
+                return updateMinReplicasRequest(True, schedule[app].default_minReplicas)
             else:
-                if current_replicas != schedule[app].default_minReplicas:                
-                    print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].default_minReplicas}')
-                    return updateMinReplicasRequest(True, schedule[app].default_minReplicas)
-        else:
-            return updateMinReplicasRequest(False, 1)    
-        return updateMinReplicasRequest(False, 1)            
+                return updateMinReplicasRequest(False, 1)
     else:
-        return updateMinReplicasRequest(False, 1)                     
+        return updateMinReplicasRequest(False, 1)
+
+
+                    
+
+
+# def evaluate_schedule(schedule, type: ScheduleType, frequency: ScheduleFrequency, target_app: str, current_replicas: int) -> updateMinReplicasRequest:
+#     if target_app in schedule:
+#         app = target_app
+#         now_ct = datetime.now(central)
+#         duration = timedelta(hours=schedule[app].duration.hours, minutes=schedule[app].duration.minutes)
+#         start_time_ct = central.localize(datetime.combine(datetime.today(), schedule[app].start))
+#         end_time_ct = start_time_ct + duration
+
+#         if frequency == ScheduleFrequency.Custom:
+#             if start_time_ct <= now_ct <= end_time_ct:
+#                 if current_replicas != schedule[app].target_minReplicas:
+#                     if type == ScheduleType.Everday:
+#                             print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].target_minReplicas}')
+#                             return updateMinReplicasRequest(True, schedule[app].target_minReplicas)
+
+#                     if type == ScheduleType.Weekday:
+#                         if now_ct.weekday() < 5:
+#                             print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].target_minReplicas}')
+#                             return updateMinReplicasRequest(True, schedule[app].target_minReplicas)
+#             else:
+#                 if current_replicas != schedule[app].default_minReplicas:
+#                     print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].default_minReplicas}')
+#                     return updateMinReplicasRequest(True, schedule[app].default_minReplicas)
+#         else:
+#             return updateMinReplicasRequest(False, 1) 
+
+#         if frequency == ScheduleFrequency.Hourly:
+#             time_difference = (now_ct - start_time_ct).total_seconds() / 60
+#             if start_time_ct <= now_ct <= end_time_ct and (time_difference % 60 == 0 or time_difference % 60 <= schedule[app].scale_duration.minutes):
+#                 if current_replicas != schedule[app].target_minReplicas:                
+#                     if type == ScheduleType.Everday:
+#                         print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].target_minReplicas}')
+#                         return updateMinReplicasRequest(True, schedule[app].target_minReplicas)
+                    
+#                     if type == ScheduleType.Weekday:
+#                         if now_ct.weekday() < 5:
+#                             print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].target_minReplicas}')
+#                             return updateMinReplicasRequest(True, schedule[app].target_minReplicas)                            
+#             else:
+#                 if current_replicas != schedule[app].default_minReplicas:                
+#                     print(f'Sending Schedule Event for {app}: minReplicas: {schedule[app].default_minReplicas}')
+#                     return updateMinReplicasRequest(True, schedule[app].default_minReplicas)
+#         else:
+#             return updateMinReplicasRequest(False, 1)    
+#         return updateMinReplicasRequest(False, 1)            
+#     else:
+#         return updateMinReplicasRequest(False, 1)                     
 
 def main():
     watch_schedules()

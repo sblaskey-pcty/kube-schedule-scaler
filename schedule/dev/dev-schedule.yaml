@@ -6,13 +6,22 @@ metadata:
     env: dev
   namespace: kube-system
 spec:
-  custom:
-    - name: ccoetesteksapi
-      start: '5:45'
-      total-duration:
-        hours: 11
-        minutes: 15
-      target-minReplicas: 2
-      default-minReplicas: 1
-      days:
-       - everyday
+  - name: ccoetesteksapi
+    default-minReplicas: 1    
+    schedules:
+      - start: '5:45'
+        scale-type: custom
+        total-duration:
+          hours: 6
+          minutes: 0
+        target-minReplicas: 2
+        days:
+          - weekday
+      - start: '12:00'
+        scale-type: custom
+        total-duration:
+          hours: 7
+          minutes: 0
+        target-minReplicas: 4
+        days:
+          - weekday              
