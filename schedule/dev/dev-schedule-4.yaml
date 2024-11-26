@@ -1,0 +1,19 @@
+apiVersion: scaler.io/v1alpha1
+kind: Schedule
+metadata:
+  name: dev-workload-schedule-four
+  labels:
+    env: dev
+  namespace: kube-system
+spec:
+  - name: ccoetesteksapi
+    default-minReplicas: 1  
+    schedules:
+      - start: '11:52'
+        scale-type: custom        
+        total-duration:
+          hours: 0
+          minutes: 2
+        target-minReplicas: 2
+        days:
+          - everyday   

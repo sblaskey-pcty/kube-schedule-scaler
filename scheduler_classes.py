@@ -51,6 +51,8 @@ class Schedule:
     target_minReplicas: int
     scale_duration: Optional[Duration] = None
     days: List[str] = field(default_factory=list)
+    updated_start: Optional[bool] = False
+    updated_end: Optional[bool] = False
 
     def __post__init__(self):
         self.validate_days()
@@ -70,6 +72,8 @@ class AppSchedule:
     name: str
     default_minReplicas: int
     schedules: List[Schedule] = field(default_factory=list)
+    hpa_name: str = ""
+    namespace: str = ""
 
 @dataclass
 class ScheduleConfig:
